@@ -1,0 +1,217 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: CFN 201 Workshop - Amazon VPC template.
+
+Parameters:
+  AvailabilityZones:
+    Type: List<AWS::EC2::AvailabilityZone::Name>
+    Description: The list of Availability Zones to use for the subnets in the VPC.
+
+  VPCName:
+    Type: String
+    Description: The name of the VPC.
+
+  VPCCidr:
+    Type: String
+    Description: The CIDR block for the VPC.
+    AllowedPattern: ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/([0-9]|[1-2][0-9]|3[0-2]))$
+    Default: '10.0.0.0/16'
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
+
+  PublicSubnet1Cidr:
+    Type: String
+    Description: The CIDR block for the public subnet located in Availability Zone 1.
+    AllowedPattern: ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/([0-9]|[1-2][0-9]|3[0-2]))$
+    Default: '10.0.0.0/24'
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
+
+  PublicSubnet2Cidr:
+    Type: String
+    Description: The CIDR block for the public subnet located in Availability Zone 2.
+    AllowedPattern: ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/([0-9]|[1-2][0-9]|3[0-2]))$
+    Default: '10.0.2.0/24'
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
+  
+
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VPCCidr
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      InstanceTenancy: default
+      Tags:
+        - Key: Name
+          Value: !Ref VPCName
+
+  VPCPublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: !Ref PublicSubnet1Cidr
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [0, !Ref AvailabilityZones]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: PublicSubnet1
+        - Key: subnet-type
+          Value: Public
+
+  VPCPublicSubnet1RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: PublicSubnet1
+
+  VPCPublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId:
+        Ref: VPCPublicSubnet1RouteTable
+      SubnetId:
+        Ref: VPCPublicSubnet1
+
+  VPCPublicSubnet1DefaultRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId:
+        Ref: VPCPublicSubnet1RouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId:
+        Ref: VPCIGW
+    DependsOn:
+      - VPCGW
+
+  VPCPublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: !Ref PublicSubnet2Cidr
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [1, !Ref AvailabilityZones]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: PublicSubnet2
+        - Key: subnet-type
+          Value: Public
+
+  VPCPublicSubnet2RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: PublicSubnet2
+
+  VPCPublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId:
+        Ref: VPCPublicSubnet2RouteTable
+      SubnetId:
+        Ref: VPCPublicSubnet2
+
+  VPCPublicSubnet2DefaultRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref VPCPublicSubnet2RouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref VPCIGW
+    DependsOn:
+      - VPCGW
+
+  VPCIGW:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: VPCIGW
+
+  VPCGW:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId:
+        Ref: VPC
+      InternetGatewayId:
+        Ref: VPCIGW
+  
+  NATAZ1:
+    Type: AWS::EC2::NatGateway
+    Properties:
+        AllocationId:
+          Fn::GetAtt:
+          - EIPNATAZ1
+          - AllocationId
+        SubnetId:
+          Ref: VPCPublicSubnet1
+        Tags:
+        - Key: Name
+          Value: Nat1
+
+  NATAZ2:   
+    Type: AWS::EC2::NatGateway
+    Properties:
+        AllocationId:
+          Fn::GetAtt:
+          - EIPNATAZ2
+          - AllocationId
+        SubnetId:
+          Ref: VPCPublicSubnet2
+        Tags:
+        - Key: Name
+          Value: Nat2
+
+  EIPNATAZ1:
+    Type: AWS::EC2::EIP
+    Properties:
+        Domain: vpc
+  
+  EIPNATAZ2:
+    Type: AWS::EC2::EIP
+    Properties:
+        Domain: vpc
+
+Outputs:
+  VpcId:
+    Description: VPC ID
+    Value: !Ref VPC
+    Export:
+      Name: VPCID
+
+  GatewayID:
+    Description: Internet Gateway ID
+    Value: !Ref VPCIGW 
+    Export:
+      Name: InternetGateway
+
+  VpcCIDR:
+    Description: VPC CIDR range
+    Value: !Ref VPCCidr
+    Export:
+      Name: VPC-CIDR
+
+  VPCPublicSubnet1:
+    Description: Public SubnetAZ1
+    Value: !Ref VPCPublicSubnet1
+    Export:
+      Name: VPCPublicSubnet1
+  
+  VPCPublicSubnet2:
+    Description: Public Subnet2
+    Value: !Ref VPCPublicSubnet2
+    Export:
+      Name: VPCPublicSubnet2
+
+  NATAZ1:
+    Description: NATAZ1
+    Value: !Ref  NATAZ1
+    Export:
+      Name: NAT-AZ1
+
+  NATAZ2:
+    Description: NATAZ2
+    Value: !Ref  NATAZ2
+    Export:
+      Name: NAT-AZ2

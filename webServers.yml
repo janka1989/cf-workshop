@@ -1,0 +1,162 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Stage Environment Instances
+
+Parameters:
+  ClientPrefix:
+    Description: " Client AWS Prefix"
+    Type: String
+    Default: tesla
+
+  EnvironmentSuffix:
+    Description: " Environment Suffix (PROD, STAGE, DEV)"
+    Type: String
+    Default: STAGE
+    AllowedValues:
+    - PROD
+    - STAGE
+    - DEV
+
+  KeyName:
+    Description: Name of an existing EC2 KeyPair to enable SSH access to the instance
+    Type: AWS::EC2::KeyPair::KeyName
+    Default: cloudgate
+    ConstraintDescription: must be the name of an existing EC2 KeyPair.
+
+  EbsOpt:
+    Description: " EBS Optimized? (true,false)"
+    Type: String
+    Default: false
+    AllowedValues:
+    - true
+    - false
+
+  WebInstanceType:
+    Description: Web EC2 instance type
+    Type: String
+    Default: t2.micro
+    AllowedValues:
+    - m4.large
+    - t2.large
+    - t2.micro
+  AmiID:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Description: 'The ID of the AMI.'
+    Default: /aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2
+
+Resources:
+  WebRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - ec2.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Policies:
+        -
+          PolicyName: "CloudWatchPublish"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              -
+                Effect: "Allow"
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:DescribeLogStreams
+                Resource: "arn:aws:logs:*:*:*"
+
+
+  WebRoleInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: "/"
+      Roles:
+      - Ref: WebRole
+
+  WebInstanceAZ1:
+    Type: AWS::EC2::Instance
+    DependsOn: WebRoleInstanceProfile
+    Properties:
+      InstanceType:
+        Ref: WebInstanceType
+      IamInstanceProfile:
+        Ref: WebRoleInstanceProfile
+      KeyName:
+        Ref: KeyName
+      EbsOptimized:
+        Ref: EbsOpt
+      ImageId: !Ref AmiID
+      DisableApiTermination: 'false'
+      BlockDeviceMappings:
+      - DeviceName: "/dev/xvda"
+        Ebs:
+          VolumeType: gp3
+          DeleteOnTermination: 'true'
+          VolumeSize: '10'
+      NetworkInterfaces:
+      - DeleteOnTermination: true
+        Description: Main interface
+        DeviceIndex: '0'
+        GroupSet:
+        - Fn::ImportValue:
+            !Sub "Web-SG"
+        SubnetId:
+          Fn::ImportValue:
+              !Sub "WebSubnetAZ1"
+      Tags:
+      - Key: Name
+        Value:  !Join [ '', [!Ref  ClientPrefix, 'AWSWEB01-', !Ref  EnvironmentSuffix ] ]
+      - Key: Environment
+        Value:
+          Ref: EnvironmentSuffix
+
+  WebInstanceAZ2:
+    Type: AWS::EC2::Instance
+    DependsOn: WebRoleInstanceProfile
+    Properties:
+      InstanceType:
+        Ref: WebInstanceType
+      IamInstanceProfile:
+        Ref: WebRoleInstanceProfile
+      KeyName:
+        Ref: KeyName
+      EbsOptimized:
+        Ref: EbsOpt
+      ImageId: !Ref AmiID
+      DisableApiTermination: 'false'
+      BlockDeviceMappings:
+      - DeviceName: "/dev/xvda"
+        Ebs:
+          VolumeType: gp3
+          DeleteOnTermination: 'true'
+          VolumeSize: '8'
+      NetworkInterfaces:
+      - DeleteOnTermination: true
+        Description: Main interface
+        DeviceIndex: '0'
+        GroupSet:
+        - Fn::ImportValue:
+            !Sub "Web-SG"
+        SubnetId:
+          Fn::ImportValue:
+              !Sub "WebSubnetAZ2"
+      Tags:
+      - Key: Name
+        Value:  !Join [ '', [!Ref  ClientPrefix, 'AWSWEB02-', !Ref  EnvironmentSuffix ] ]
+
+      - Key: Environment
+        Value:
+          Ref: EnvironmentSuffix
+
+Outputs:
+  WebRole:
+    Description: WebRole
+    Value:
+      Ref: WebRole

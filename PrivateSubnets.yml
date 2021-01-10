@@ -1,0 +1,447 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Prod Environment Subnets
+
+Parameters:
+  VPCStackName:
+    Description: "CloudFormation VPC Stack Name"
+    Type: String
+    MinLength: 1
+    MaxLength: 255
+    AllowedPattern: "^[a-zA-Z][-a-zA-Z0-9]*$"
+    Default: "VPC"
+
+  ClientPrefix:
+    Description: " Client AWS Prefix (MTRA) "
+    Type: String
+    Default: tesla
+
+  EnvironmentSuffix:
+    Description: " Environment Suffix (PROD, STAGE, DEV)"
+    Type: String
+    Default: PROD
+    AllowedValues:
+      - PROD
+      - STAGE
+      - DEV
+
+  WebSubnetCIDRAZ1:
+    Description: " Web Subnet CIDR Range "
+    Type: String
+    Default: 10.0.10.0/24
+
+  WebSubnetCIDRAZ2:
+    Description: " Web Subnet CIDR Range "
+    Type: String
+    Default: 10.0.20.0/24
+
+  DBSubnetCIDRAZ1:
+    Description: " App Subnet CIDR Range"
+    Type: String
+    Default: 10.0.30.0/24
+
+  DBSubnetCIDRAZ2:
+    Description: " App Subnet CIDR Range"
+    Type: String
+    Default: 10.0.40.0/24
+
+
+Resources:
+  WebSubnetAZ1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Fn::ImportValue:
+         !Sub "VPCID"
+      CidrBlock: !Ref  WebSubnetCIDRAZ1
+      AvailabilityZone:
+          !Select ['0', !GetAZs ]
+      Tags:
+      - Key: Name
+        Value: !Join [ ' ', [!Ref  ClientPrefix, !Ref  EnvironmentSuffix,  'Web Subnet AZ1'] ]
+      - Key: Environment
+        Value:
+          !Ref  EnvironmentSuffix
+
+  WebSubnetAZ2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Fn::ImportValue:
+         !Sub VPCID
+      CidrBlock:
+        !Ref  WebSubnetCIDRAZ2
+      AvailabilityZone:
+        !Select ['1', !GetAZs ]
+      Tags:
+      - Key: Name
+        Value: !Join [ ' ',[ !Ref  ClientPrefix, !Ref  EnvironmentSuffix,  'Web Subnet AZ2'] ]
+      - Key: Environment
+        Value:
+          !Ref  EnvironmentSuffix
+
+  DBSubnetAZ1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Fn::ImportValue:
+          !Sub VPCID
+      CidrBlock:
+        !Ref  DBSubnetCIDRAZ1
+      AvailabilityZone:  !Select ['0', !GetAZs ]
+      Tags:
+      - Key: Name
+        Value: !Join [ ' ', [!Ref  ClientPrefix, !Ref  EnvironmentSuffix,  'DB Subnet AZ1'] ]
+      - Key: Environment
+        Value:
+          !Ref  EnvironmentSuffix
+
+  DBSubnetAZ2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Fn::ImportValue:
+          !Sub VPCID
+      CidrBlock:
+        !Ref  DBSubnetCIDRAZ2
+      AvailabilityZone: !Select ['1', !GetAZs ]
+      Tags:
+      - Key: Name
+        Value: !Join [ ' ',[ !Ref  ClientPrefix, !Ref  EnvironmentSuffix,  'DB Subnet AZ2'] ]
+      - Key: Environment
+        Value:
+          !Ref  EnvironmentSuffix
+
+  DBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Internal DB Security Group
+      VpcId:
+        Fn::ImportValue:
+          !Sub "VPCID"
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: '3306'
+        ToPort: '3306'
+        CidrIp:
+          !Ref  WebSubnetCIDRAZ1
+      - IpProtocol: tcp
+        FromPort: '3306'
+        ToPort: '3306'
+        CidrIp:
+          !Ref  WebSubnetCIDRAZ2
+      - IpProtocol: icmp
+        FromPort: "-1"
+        ToPort: "-1"
+        CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+      - IpProtocol: "-1"
+        CidrIp: 0.0.0.0/0
+      Tags:
+      - Key: Name
+        Value: !Join [ ' ',[ !Ref  ClientPrefix, !Ref  EnvironmentSuffix,  'DB SG'] ]
+      - Key: Environment
+        Value:
+          !Ref  EnvironmentSuffix
+
+  WebSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: External Web Security Group
+      VpcId:
+        Fn::ImportValue:
+         !Sub VPCID
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: '80'
+        ToPort: '80'
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: '443'
+        ToPort: '443'
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: "-1"
+        CidrIp:
+          !Ref  WebSubnetCIDRAZ1
+      - IpProtocol: "-1"
+        CidrIp:
+          !Ref  WebSubnetCIDRAZ2
+      - IpProtocol: icmp
+        FromPort: "-1"
+        ToPort: "-1"
+        CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+      - IpProtocol: "-1"
+        CidrIp: 0.0.0.0/0
+      Tags:
+      - Key: Name
+        Value: !Join [ ' ',[ !Ref  ClientPrefix, !Ref  EnvironmentSuffix,  'Web SG'] ]
+      - Key: Environment
+        Value:
+          !Ref  EnvironmentSuffix
+
+  rtWebAZ1:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Fn::ImportValue:
+          !Sub "VPCID"
+      Tags:
+      - Key: Name
+        Value: !Join [ ' ', [!Ref  ClientPrefix, !Ref  EnvironmentSuffix,  'Internet Route AZ1'] ]
+      - Key: Environment
+        Value:
+          !Ref  EnvironmentSuffix
+
+  rtWebassocAZ1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId:
+        !Ref  rtWebAZ1
+      SubnetId:
+        !Ref  WebSubnetAZ1
+
+  rtWebInternetAZ1:
+    Type: AWS::EC2::Route
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      RouteTableId:
+        !Ref  rtWebAZ1
+      NatGatewayId:
+        Fn::ImportValue:
+           !Sub "NAT-AZ1"
+
+  rtWebAZ2:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Fn::ImportValue:
+         !Sub "VPCID"
+      Tags:
+      - Key: Name
+        Value: !Join [ ' ', [!Ref  ClientPrefix, !Ref  EnvironmentSuffix,  'Web AZ2 Route'] ]
+      - Key: Environment
+        Value:
+          !Ref  EnvironmentSuffix
+
+  rtWebassocAZ2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId:
+        !Ref  rtWebAZ2
+      SubnetId:
+        !Ref  WebSubnetAZ2
+
+  rtWebInternetAZ2:
+    Type: AWS::EC2::Route
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      RouteTableId:
+        !Ref  rtWebAZ2
+      NatGatewayId:
+        Fn::ImportValue:
+           !Sub NAT-AZ2
+
+  rtDBAZ1:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Fn::ImportValue:
+         !Sub VPCID
+      Tags:
+      - Key: Name
+        Value: !Join [ ' ', [!Ref  ClientPrefix, !Ref  EnvironmentSuffix,  'DB Internet Route AZ1'] ]
+      - Key: Environment
+        Value:
+          !Ref  EnvironmentSuffix
+
+  rtDBAssocAZ1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId:
+        !Ref  rtDBAZ1
+      SubnetId:
+        !Ref  DBSubnetAZ1
+
+  rtDBInternetAZ1:
+    Type: AWS::EC2::Route
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      RouteTableId:
+        !Ref  rtDBAZ1
+      NatGatewayId:
+        Fn::ImportValue:
+           !Sub NAT-AZ1
+  rtDBAZ2:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Fn::ImportValue:
+         !Sub VPCID
+      Tags:
+      - Key: Name
+        Value: !Join [ ' ', [!Ref  ClientPrefix, !Ref  EnvironmentSuffix,  'App Internet Route AZ2' ]]
+      - Key: Environment
+        Value:
+          !Ref  EnvironmentSuffix
+
+  rtDBAssocAZ2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId:
+        !Ref  rtDBAZ2
+      SubnetId:
+        !Ref  DBSubnetAZ2
+
+  rtAppInternetAZ2:
+    Type: AWS::EC2::Route
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      RouteTableId:
+        !Ref  rtDBAZ2
+      NatGatewayId:
+        Fn::ImportValue:
+           !Sub NAT-AZ2
+  WebAcl:
+    Type: AWS::EC2::NetworkAcl
+    Properties:
+      VpcId:
+        Fn::ImportValue:
+          !Sub VPCID
+      Tags:
+      - Key: Name
+        Value: !Join [ ' ', [!Ref  ClientPrefix, !Ref  EnvironmentSuffix,  'Web ACL'] ]
+      - Key: Environment
+        Value:
+          !Ref  EnvironmentSuffix
+
+  WebAclAssocAZ1:
+    Type: AWS::EC2::SubnetNetworkAclAssociation
+    Properties:
+      NetworkAclId:
+        !Ref  WebAcl
+      SubnetId:
+        !Ref  WebSubnetAZ1
+
+  WebAclAssocAZ2:
+    Type: AWS::EC2::SubnetNetworkAclAssociation
+    Properties:
+      NetworkAclId:
+        !Ref  WebAcl
+      SubnetId:
+        !Ref  WebSubnetAZ2
+
+  WebAclAllowTCPEgress:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      CidrBlock: 0.0.0.0/0
+      Egress: true
+      Protocol: "-1"
+      RuleAction: allow
+      RuleNumber: '200'
+      NetworkAclId:
+        !Ref  WebAcl
+
+  WebAclAllowAllIngress:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      CidrBlock: 0.0.0.0/0
+      Protocol: "-1"
+      RuleAction: allow
+      RuleNumber: '200'
+      NetworkAclId:
+        !Ref  WebAcl
+
+  DBAcl:
+    Type: AWS::EC2::NetworkAcl
+    Properties:
+      VpcId:
+        Fn::ImportValue:
+          !Sub VPCID
+      Tags:
+      - Key: Name
+        Value: !Join [ ' ', [!Ref  ClientPrefix, !Ref  EnvironmentSuffix,  'App ACL '] ]
+      - Key: Environment
+        Value:
+          !Ref  EnvironmentSuffix
+
+  DBAclAssocAZ1:
+    Type: AWS::EC2::SubnetNetworkAclAssociation
+    Properties:
+      NetworkAclId:
+        !Ref  DBAcl
+      SubnetId:
+        !Ref  DBSubnetAZ1
+
+  DBAclAssocAZ2:
+    Type: AWS::EC2::SubnetNetworkAclAssociation
+    Properties:
+      NetworkAclId:
+        !Ref  DBAcl
+      SubnetId:
+        !Ref  DBSubnetAZ2
+
+  DBAclAllowTCPEgress:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      CidrBlock: 0.0.0.0/0
+      Egress: true
+      Protocol: "-1"
+      RuleAction: allow
+      RuleNumber: '200'
+      NetworkAclId:
+        !Ref  DBAcl
+
+  DBAclAllowAllIngress:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      CidrBlock: 0.0.0.0/0
+      Protocol: "-1"
+      RuleAction: allow
+      RuleNumber: '200'
+      NetworkAclId:
+        !Ref DBAcl
+
+
+Outputs:
+  WebSubnetAZ2:
+    Description: WebSubnetAZ2
+    Value:
+      !Ref  WebSubnetAZ2
+    Export:
+      Name: WebSubnetAZ2
+
+  WebSubnetAZ1:
+    Description: WebSubnetAZ1
+    Value:
+      !Ref  WebSubnetAZ1
+    Export:
+      Name: WebSubnetAZ1
+
+  WebSecurityGroup:
+    Description: Web Security Group
+    Value:
+      !Ref  WebSecurityGroup
+    Export:
+      Name: Web-SG
+
+  DBSubnetAZ2:
+    Description: DBSubnetAZ2
+    Value:
+      !Ref  DBSubnetAZ2
+    Export:
+      Name: DBSubnetAZ2
+
+  DBSubnetAZ1:
+    Description: DBSubnetAZ1
+    Value:
+      !Ref  DBSubnetAZ1
+    Export:
+      Name: DBSubnetAZ1
+
+  DBSecurityGroup:
+    Description: DB Security Group
+    Value:
+      !Ref  DBSecurityGroup
+    Export:
+      Name: DB-SG
